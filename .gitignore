@@ -1,0 +1,21 @@
+# Ignore virtual environment
+venv/
+
+# Ignore raw and processed datasets (too large)
+data/raw/
+data/processed/
+
+# Ignore system and temporary files
+__pycache__/
+.ipynb_checkpoints/
+*.log
+*.tmp
+
+# Ignore model weight files and training outputs
+*.h5
+*.ckpt
+*.pt
+*.pth
+
+# Allow small sample images for demonstration
+!data/sample/
