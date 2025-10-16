@@ -1,7 +1,5 @@
-
 import os
 import sys
-import time
 import glob
 import json
 import argparse
@@ -12,6 +10,23 @@ import cv2
 import tensorflow as tf
 
 CLASS_NAMES_DEFAULT = ["Closed_Eyes","Open_Eyes","Yawn","No_Yawn"]
+
+# ---- Register preprocessors so Keras can deserialize Lambda(preprocess_input) ----
+@tf.keras.utils.register_keras_serializable(name="preprocess_input")
+def _mobilenet_preprocess(x):
+    # MobileNetV2 version ([-1, 1])
+    return tf.keras.applications.mobilenet_v2.preprocess_input(x)
+
+@tf.keras.utils.register_keras_serializable(name="efficientnet_preprocess_input")
+def _efficientnet_preprocess(x):
+    # EfficientNet version (also maps to [-1,1] for TF/keras EfficientNet)
+    return tf.keras.applications.efficientnet.preprocess_input(x)
+
+# Provide both names in custom_objects; some models may serialize one or the other
+CUSTOM_OBJECTS = {
+    "preprocess_input": _mobilenet_preprocess,
+    "efficientnet_preprocess_input": _efficientnet_preprocess,
+}
 
 def latest_model(pattern):
     files = glob.glob(pattern)
@@ -42,28 +57,56 @@ def get_model_input_size(model):
     else:
         return 64, 64
 
-def preprocess_frame(bgr, target_size):
+def model_has_internal_preproc(model):
+    """Detect Lambda(preprocess_input) or Rescaling(1/127.5, offset=-1)."""
+    try:
+        for layer in model.layers:
+            name = layer.__class__.__name__
+            if name == "Lambda":
+                cfg = layer.get_config()
+                fn_name = None
+                fn = cfg.get("function")
+                if isinstance(fn, dict) and "config" in fn:
+                    fn_name = fn["config"]
+                elif isinstance(fn, str):
+                    fn_name = fn
+                if fn_name and "preprocess_input" in str(fn_name):
+                    return True
+            if name == "Rescaling":
+                cfg = layer.get_config()
+                scale = cfg.get("scale")
+                offset = cfg.get("offset")
+                if scale is not None and offset is not None:
+                    if abs(scale - (1.0/127.5)) < 1e-5 and abs(offset - (-1.0)) < 1e-5:
+                        return True
+    except Exception:
+        pass
+    return False
+
+def preprocess_frame(bgr, target_size, expect_raw_0_255):
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     resized = cv2.resize(rgb, target_size)
-    x = (resized / 255.0).astype("float32")
+    if expect_raw_0_255:
+        # Let the model handle preprocess_input (Lambda/Rescaling inside)
+        x = resized.astype("float32")
+    else:
+        # External normalization for models without built-in preproc
+        x = (resized / 255.0).astype("float32")
     return x
 
-def predict_frame_model(model, frame_rgb_norm):
-    x = np.expand_dims(frame_rgb_norm, axis=0)
+def predict_frame_model(model, frame_rgb):
+    x = np.expand_dims(frame_rgb, axis=0)
     probs = model.predict(x, verbose=0)[0]
     idx = int(np.argmax(probs))
     conf = float(probs[idx])
     return idx, conf, probs
 
-def predict_sequence_model(model, frames_rgb_norm):
-    x = np.expand_dims(frames_rgb_norm, axis=0)
+def predict_sequence_model(model, frames_rgb):
+    x = np.expand_dims(frames_rgb, axis=0)
     probs = model.predict(x, verbose=0)[0]
     idx = int(np.argmax(probs))
     conf = float(probs[idx])
     return idx, conf, probs
-
-def draw_overlay(frame_bgr, text, color=(0,255,0)):
-    cv2.putText(frame_bgr, text, (12,30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2, cv2.LINE_AA)
 
 def beep_if_possible(alarm_wav=None):
     try:
@@ -102,11 +145,11 @@ def main():
     model_path = args.model
     if model_path is None:
         prefs = [
-            "models/transfer_*_final_*.keras",
-            "models/efficientnet_final_*.keras",
-            "models/vit_final_*.keras",
-            "models/baseline_cnn_final_*.keras",
-            "models/cnn_lstm_final_*.keras"
+            "notebooks/models/transfer_*_final_*.keras",
+            "notebooks/models/efficientnet_final_*.keras",
+            "notebooks/models/vit_final_*.keras",
+            "notebooks/models/baseline_cnn_final_*.keras",
+            "notebooks/models/cnn_lstm_final_*.keras"
         ]
         for pat in prefs:
             p = latest_model(pat)
@@ -119,7 +162,12 @@ def main():
         sys.exit(1)
 
     print("[INFO] Loading model:", model_path)
-    model = tf.keras.models.load_model(model_path, compile=False)
+    model = tf.keras.models.load_model(
+        model_path,
+        compile=False,
+        custom_objects=CUSTOM_OBJECTS,
+        safe_mode=False,  # needed when unknown objects exist in the graph
+    )
     labels = load_labels(args.labels)
 
     if args.mode == "auto":
@@ -132,15 +180,18 @@ def main():
     H, W = get_model_input_size(model)
     target_size = (W, H)
 
+    has_internal = model_has_internal_preproc(model)
+    print("[INFO] Detected internal preprocessing:" if has_internal else "[INFO] No internal preprocessing detected.",
+          "(Lambda/Rescaling inside model)" if has_internal else "(will normalize x/255 externally)")
+
     face_cascade = load_face_cascade(args.haarcascade)
 
     src = 0 if (args.source.isdigit() and len(args.source) == 1) else args.source
-    cap = cv2.VideoCapture(src)
+    cap = cv2.VideoCapture(src, cv2.CAP_DSHOW if os.name == "nt" and str(src).isdigit() else 0)
     if not cap.isOpened():
         print("[ERROR] Could not open video source:", args.source)
         sys.exit(1)
 
-    from collections import deque
     prob_window = deque(maxlen=args.window)
     seq_window = deque(maxlen=args.window)
     consec_drowsy = 0
@@ -168,7 +219,7 @@ def main():
                 roi = frame[max(0,y):y+h, max(0,x):x+w]
                 cv2.rectangle(view, (x,y), (x+w,y+h), (0,255,0), 2)
 
-        x = preprocess_frame(roi, target_size)
+        x = preprocess_frame(roi, target_size, expect_raw_0_255=has_internal)
 
         if mode == "frame":
             idx, conf, probs = predict_frame_model(model, x)
@@ -191,8 +242,8 @@ def main():
         else:
             seq_window.append(x)
             if len(seq_window) == args.window:
-                frames_rgb_norm = np.stack(list(seq_window), axis=0)
-                idx, conf, probs = predict_sequence_model(model, frames_rgb_norm)
+                frames_rgb = np.stack(list(seq_window), axis=0)
+                idx, conf, probs = predict_sequence_model(model, frames_rgb)
                 pred = labels[idx]
                 color = (0,0,255) if (idx == idx_closed or idx == idx_yawn) else (0,255,0)
                 cv2.putText(view, f"{pred} ({conf:.2f})", (12,30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2, cv2.LINE_AA)
@@ -208,4 +259,6 @@ def main():
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
+    # To disable oneDNN optimizations for exact numeric reproducibility, uncomment:
+    # os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
     main()

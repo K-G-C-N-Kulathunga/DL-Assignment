@@ -39,3 +39,4 @@ python demo/app.py --model models/transfer_mobilenetv2_final_*.keras --source 0
 # CNN-LSTM with 12-frame sequences on a video file:
 python demo/app.py --model models/cnn_lstm_final_*.keras --mode sequence --window 12 --source path/to/video.mp4
 ```
+C:\Users\kgcha\Documents\GitHub\DL-Assignment\notebooks\models
