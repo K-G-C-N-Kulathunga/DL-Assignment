@@ -40,3 +40,8 @@ python demo/app.py --model models/transfer_mobilenetv2_final_*.keras --source 0
 python demo/app.py --model models/cnn_lstm_final_*.keras --mode sequence --window 12 --source path/to/video.mp4
 ```
 C:\Users\kgcha\Documents\GitHub\DL-Assignment\notebooks\models
+
+
+python tools/check_model.py predict --model notebooks/models/transfer_mobilenetv2_final_20251016-154036_mobilenetv2.keras \
+  --labels notebooks/models/labels.json \
+  --image data/raw/Yawn_Eye_Dataset/test/yawn/14.jpg
