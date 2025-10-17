@@ -189,8 +189,8 @@ def main():
                         help="Optional Haar cascade path for face crop")
     parser.add_argument("--show_face", action="store_true", help="Crop detected face if available")
     parser.add_argument("--window", type=int, default=8, help="Smoothing window (frame mode) or sequence length (sequence mode)")
-    parser.add_argument("--threshold", type=float, default=0.6, help="Prob threshold to trigger drowsy alert")
-    parser.add_argument("--min_consec", type=int, default=8, help="Consecutive frames above threshold to alert (frame mode)")
+    parser.add_argument("--threshold", type=float, default=0.4, help="Prob threshold to trigger drowsy alert")
+    parser.add_argument("--min_consec", type=int, default=3, help="Consecutive frames above threshold to alert (frame mode)")
     parser.add_argument("--alarm", type=str, default="assets/alarm.wav", help="Optional alarm WAV file")
     args = parser.parse_args()
 
@@ -288,11 +288,23 @@ def main():
             prob_window.append(probs)
             avg_probs = np.mean(np.vstack(prob_window), axis=0) if len(prob_window) > 0 else probs
 
-            pred_idx = int(np.argmax(avg_probs))
-            pred = labels[pred_idx]
-            pred_conf = float(avg_probs[pred_idx])
+            # Check both eyes and yawn probabilities
+            eyes_closed_prob = avg_probs[idx_closed]
+            yawn_prob = avg_probs[idx_yawn]
+            
+            # Determine the dominant state
+            if eyes_closed_prob >= args.threshold:
+                pred = "Closed_Eyes"
+                pred_conf = eyes_closed_prob
+            elif yawn_prob >= args.threshold:
+                pred = "Yawn"
+                pred_conf = yawn_prob
+            else:
+                pred_idx = int(np.argmax(avg_probs))
+                pred = labels[pred_idx]
+                pred_conf = float(avg_probs[pred_idx])
 
-            is_drowsy = (avg_probs[idx_closed] >= args.threshold) or (avg_probs[idx_yawn] >= args.threshold)
+            is_drowsy = (eyes_closed_prob >= args.threshold) or (yawn_prob >= args.threshold)
             consec_drowsy = consec_drowsy + 1 if is_drowsy else 0
 
             color = (0, 0, 255) if consec_drowsy >= args.min_consec else (0, 255, 0)
