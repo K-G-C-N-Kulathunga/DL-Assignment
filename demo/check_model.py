@@ -190,5 +190,3 @@ if __name__ == "__main__":
     if args.cmd == "probe":   cmd_probe(args)
     elif args.cmd == "predict": cmd_predict(args)
     elif args.cmd == "eval":    cmd_eval(args)
-
-

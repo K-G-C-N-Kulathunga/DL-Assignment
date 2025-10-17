@@ -1,47 +1,42 @@
-
-# Demo (Optional Bonus) — Real-time / Video Detection
-
-Run a live webcam or video file demo that uses your best trained model to detect drowsiness.
-
-## Quick Start
-
-```bash
-pip install opencv-python tensorflow numpy simpleaudio
-python demo/app.py --source 0 --show_face
-```
-
-- Press `q` to quit.
-- Use `--source path/to/video.mp4` to run on a video file.
-
-## Options
-
-- `--model` : Path to a `.keras` model. If omitted, the script auto-picks the latest model in `models/`.
-- `--labels`: Path to `models/labels.json` (optional, defaults provided).
-- `--mode`  : `auto` (default), `frame`, or `sequence`.
-- `--window`: Smoothing window (frame mode) or sequence length (sequence mode). Default `8`.
-- `--threshold`: Probability threshold to consider drowsy (`Closed_Eyes` or `Yawn`). Default `0.6`.
-- `--min_consec`: Consecutive frames above threshold to trigger an alarm (frame mode). Default `8`.
-- `--show_face`: Enables Haar cascade face crop for better focus on the driver face.
-- `--haarcascade`: Path to Haar cascade (e.g., `assets/haarcascades/haarcascade_frontalface_default.xml`).
-
-> Tip: To use face detection, download the Haar cascade from OpenCV and place it at:
-> `assets/haarcascades/haarcascade_frontalface_default.xml`
-
-## Examples
-
-```bash
-# Use latest model automatically, webcam 0:
-python demo/app.py --source 0 --show_face
-
-# Explicit transfer model:
-python demo/app.py --model models/transfer_mobilenetv2_final_*.keras --source 0
-
-# CNN-LSTM with 12-frame sequences on a video file:
-python demo/app.py --model models/cnn_lstm_final_*.keras --mode sequence --window 12 --source path/to/video.mp4
-```
-C:\Users\kgcha\Documents\GitHub\DL-Assignment\notebooks\models
+test-------------------------------------------
 
 
-python tools/check_model.py predict --model notebooks/models/transfer_mobilenetv2_final_20251016-154036_mobilenetv2.keras \
-  --labels notebooks/models/labels.json \
-  --image data/raw/Yawn_Eye_Dataset/test/yawn/14.jpg
+python demo/check_model.py predict --model notebooks/models/baseline_cnn_final_20251016-152849.keras --image assets/test_images/Open_Eyes/47.jpg
+
+
+
+python demo/check_model.py predict --model notebooks/models/cnn_lstm_final_20251016-153523_cnnlstm.keras --image assets/test_images/Open_Eyes/47.jpg
+
+
+
+python demo/check_model.py predict --model notebooks/models/efficientnet_final_20251016-155501_efficientnet.keras --image assets/test_images/Open_Eyes/47.jpg
+
+
+python demo/check_model.py predict --model notebooks/models/vit_final_20251016-160528_vit.keras --image assets/test_images/Open_Eyes/14.jpg
+
+
+
+
+python demo/check_model.py predict --model notebooks/models/transfer_mobilenetv2_final_20251016-154036_mobilenetv2.keras --image assets/test_images/Open_Eyes/47.jpg
+
+
+
+
+
+
+
+
+probe a model-----------------------------
+
+python demo/check_model.py probe --model notebooks/models/baseline_cnn_final_20251016-152849.keras
+
+
+python demo/check_model.py probe --model notebooks/models/vit_final_20251016-160528_vit.keras
+
+python demo/check_model.py probe --model notebooks/models/efficientnet_final_20251016-155501_efficientnet.keras
+
+
+python demo/check_model.py probe --model notebooks/models/cnn_lstm_final_20251016-153523_cnnlstm.keras
+
+
+python demo/check_model.py probe --model notebooks/models/transfer_mobilenetv2_final_20251016-154036_mobilenetv2.keras
